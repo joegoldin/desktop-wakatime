@@ -11,12 +11,14 @@ import { MonitoredApp } from "../helpers/monitored-app";
 import { MonitoringManager } from "../helpers/monitoring-manager";
 import { Logging, LogLevel } from "../utils/logging";
 import { Wakatime } from "./wakatime";
+import { isKdeWayland, KdeWaylandWatcher } from "./kde-wayland";
 
 export class Watcher {
   wakatime: Wakatime;
   activeWindow?: WindowInfo;
   private activeWindowSubscription: number | null;
   private interval: NodeJS.Timeout | null;
+  private kdeWatcher: KdeWaylandWatcher | null = null;
 
   constructor(wakatime: Wakatime) {
     this.wakatime = wakatime;
@@ -26,7 +28,12 @@ export class Watcher {
 
   private handleActivity() {
     try {
-      const window = activeWindow();
+      const window = isKdeWayland()
+        ? this.activeWindow
+        : activeWindow();
+      if (!window) {
+        return;
+      }
       if (!MonitoringManager.isMonitored(window.info.path)) {
         return;
       }
@@ -52,8 +59,7 @@ export class Watcher {
     }
   }
 
-  start() {
-    this.stop();
+  private startXWin() {
     this.activeWindowSubscription = subscribeActiveWindow(
       (windowInfo: WindowInfo) => {
         if (!windowInfo.info.processId) return;
@@ -69,6 +75,32 @@ export class Watcher {
         this.handleActivity();
       },
     );
+  }
+
+  private async startKde() {
+    this.kdeWatcher = new KdeWaylandWatcher();
+    await this.kdeWatcher.start((windowInfo: WindowInfo) => {
+      if (!windowInfo.info.processId) return;
+      if (this.activeWindow?.info.processId === windowInfo.info.processId) {
+        return;
+      }
+
+      Logging.instance().log(
+        `App changed from ${this.activeWindow?.info.name || "nil"} to ${windowInfo.info.name}`,
+      );
+      this.activeWindow = windowInfo;
+
+      this.handleActivity();
+    });
+  }
+
+  start() {
+    this.stop();
+    if (isKdeWayland()) {
+      this.startKde();
+    } else {
+      this.startXWin();
+    }
     this.interval = setInterval(() => {
       const idleState = powerMonitor.getSystemIdleState(10);
       if (idleState === "active") {
@@ -80,6 +112,10 @@ export class Watcher {
   stop() {
     if (this.activeWindowSubscription !== null) {
       unsubscribeActiveWindow(this.activeWindowSubscription);
+    }
+    if (this.kdeWatcher !== null) {
+      this.kdeWatcher.stop();
+      this.kdeWatcher = null;
     }
     if (this.interval !== null) {
       clearInterval(this.interval);
