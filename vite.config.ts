@@ -14,7 +14,7 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              external: ["@miniben90/x-win", "icon-promise"],
+              external: ["@miniben90/x-win", "icon-promise", "dbus-next"],
             },
             minify: false,
           },
