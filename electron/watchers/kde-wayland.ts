@@ -207,18 +207,29 @@ export class KdeWaylandWatcher {
       );
       this.scriptingIface = kwinProxy.getInterface("org.kde.kwin.Scripting");
 
-      this.scriptId = await this.scriptingIface.loadScript(
-        scriptFile,
-        KWIN_SCRIPT_NAME,
+      // Use raw D-Bus message for the 2-arg loadScript overload.
+      // dbus-next's proxy only sees the 1-arg variant due to method overloading.
+      const loadReply = await this.bus.call(
+        new dbus.Message({
+          destination: "org.kde.KWin",
+          path: "/Scripting",
+          interface: "org.kde.kwin.Scripting",
+          member: "loadScript",
+          signature: "ss",
+          body: [scriptFile, KWIN_SCRIPT_NAME],
+        }),
       );
+      this.scriptId = loadReply!.body[0] as number;
 
       // Run the script
-      const scriptProxy = await this.bus.getProxyObject(
-        "org.kde.KWin",
-        `/Scripting/Script${this.scriptId}`,
+      await this.bus.call(
+        new dbus.Message({
+          destination: "org.kde.KWin",
+          path: `/Scripting/Script${this.scriptId}`,
+          interface: "org.kde.kwin.Script",
+          member: "run",
+        }),
       );
-      const scriptIface = scriptProxy.getInterface("org.kde.kwin.Script");
-      await scriptIface.run();
     } catch (err) {
       console.error("[kde-wayland] Failed to start watcher:", err);
       // Clean up partial state
@@ -232,9 +243,18 @@ export class KdeWaylandWatcher {
    */
   async stop(): Promise<void> {
     try {
-      if (this.scriptingIface && this.scriptId !== null) {
+      if (this.bus && this.scriptId !== null) {
         try {
-          await this.scriptingIface.unloadScript(KWIN_SCRIPT_NAME);
+          await this.bus.call(
+            new dbus.Message({
+              destination: "org.kde.KWin",
+              path: "/Scripting",
+              interface: "org.kde.kwin.Scripting",
+              member: "unloadScript",
+              signature: "s",
+              body: [KWIN_SCRIPT_NAME],
+            }),
+          );
         } catch (err) {
           console.error("[kde-wayland] Error unloading KWin script:", err);
         }
@@ -289,8 +309,17 @@ export class KdeWaylandWatcher {
       const cleanup = async () => {
         this.callback = prevCallback;
         try {
-          if (this.scriptingIface) {
-            await this.scriptingIface.unloadScript("wakatime-list-windows");
+          if (this.bus) {
+            await this.bus.call(
+              new dbus.Message({
+                destination: "org.kde.KWin",
+                path: "/Scripting",
+                interface: "org.kde.kwin.Scripting",
+                member: "unloadScript",
+                signature: "s",
+                body: ["wakatime-list-windows"],
+              }),
+            );
           }
         } catch {
           // ignore
@@ -325,17 +354,26 @@ export class KdeWaylandWatcher {
           const scriptFile = path.join(listTmpDir, "kwin-list.js");
           fs.writeFileSync(scriptFile, KWIN_LIST_WINDOWS_SCRIPT, "utf-8");
 
-          const scriptId = await this.scriptingIface!.loadScript(
-            scriptFile,
-            "wakatime-list-windows",
+          const loadReply = await this.bus!.call(
+            new dbus.Message({
+              destination: "org.kde.KWin",
+              path: "/Scripting",
+              interface: "org.kde.kwin.Scripting",
+              member: "loadScript",
+              signature: "ss",
+              body: [scriptFile, "wakatime-list-windows"],
+            }),
           );
+          const scriptId = loadReply!.body[0] as number;
 
-          const scriptProxy = await this.bus!.getProxyObject(
-            "org.kde.KWin",
-            `/Scripting/Script${scriptId}`,
+          await this.bus!.call(
+            new dbus.Message({
+              destination: "org.kde.KWin",
+              path: `/Scripting/Script${scriptId}`,
+              interface: "org.kde.kwin.Script",
+              member: "run",
+            }),
           );
-          const scriptIface = scriptProxy.getInterface("org.kde.kwin.Script");
-          await scriptIface.run();
         } catch (err) {
           console.error("[kde-wayland] Error listing open windows:", err);
           clearTimeout(timeout);
