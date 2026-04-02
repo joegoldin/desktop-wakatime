@@ -22,7 +22,6 @@ import { Logging, LogLevel } from "./utils/logging";
 import { AppData } from "./utils/validators";
 import { Wakatime } from "./watchers/wakatime";
 import { Watcher } from "./watchers/watcher";
-import { isKdeWayland, KdeWaylandWatcher } from "./watchers/kde-wayland";
 
 // The built directory structure
 //
@@ -48,7 +47,6 @@ let monitoredAppsWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let watcher: Watcher | null = null;
 let wakatime: Wakatime | null = null;
-let kdeWatcher: KdeWaylandWatcher | null = null;
 
 // 🚧 Use ['ENV_NAME'] avoid vite:define plugin - Vite@2.x
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
@@ -252,10 +250,6 @@ if (!gotTheLock) {
     wakatime.init(tray);
     watcher = new Watcher(wakatime);
     watcher.start();
-    if (isKdeWayland()) {
-      kdeWatcher = new KdeWaylandWatcher();
-      await kdeWatcher.start(() => {});
-    }
   });
 
   app.on("open-url", (_event, url) => {
@@ -270,14 +264,10 @@ app.on("activate", () => {});
 app.on("quit", () => {
   Logging.instance().log("WakaTime will terminate");
   watcher?.stop();
-  if (kdeWatcher) {
-    kdeWatcher.stop();
-    kdeWatcher = null;
-  }
 });
 
 async function getOpenWindows(): Promise<WindowInfo[]> {
-  return kdeWatcher ? await kdeWatcher.getOpenWindows() : await openWindowsAsync();
+  return watcher?.kdeWatcher ? await watcher.kdeWatcher.getOpenWindows() : await openWindowsAsync();
 }
 
 async function windowsToApps(windows: WindowInfo[]) {
