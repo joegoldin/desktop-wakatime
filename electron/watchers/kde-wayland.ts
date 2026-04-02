@@ -59,25 +59,6 @@ export function isKdeWayland(): boolean {
   const isWayland =
     !!process.env.WAYLAND_DISPLAY ||
     process.env.XDG_SESSION_TYPE === "wayland";
-  // Fallback: if env vars are missing (e.g. launched from a terminal without
-  // session vars), check if KWin is running as a Wayland compositor
-  if (!isKde || !isWayland) {
-    try {
-      const kwinPid = fs
-        .readdirSync("/proc")
-        .find((entry) => {
-          try {
-            const cmdline = fs.readFileSync(`/proc/${entry}/cmdline`, "utf-8");
-            return cmdline.includes("kwin_wayland");
-          } catch {
-            return false;
-          }
-        });
-      if (kwinPid) return true;
-    } catch {
-      // ignore
-    }
-  }
   return isKde && isWayland;
 }
 
