@@ -18,7 +18,7 @@ export class Watcher {
   activeWindow?: WindowInfo;
   private activeWindowSubscription: number | null;
   private interval: NodeJS.Timeout | null;
-  private kdeWatcher: KdeWaylandWatcher | null = null;
+  kdeWatcher: KdeWaylandWatcher | null = null;
 
   constructor(wakatime: Wakatime) {
     this.wakatime = wakatime;
